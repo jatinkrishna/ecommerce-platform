@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../Ecommerce.Shared.Common/Ecommerce.Shared.Common.csproj" />
+  <Project Path="Ecommerce.Identity.API.csproj" />
+</Solution>

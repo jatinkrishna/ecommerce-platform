@@ -1,0 +1,390 @@
+# 🚀 Complete Deployment Guide - Multi-Environment Strategy
+
+## 📊 **Deployment Overview**
+
+```
+Local Development
+    ↓ (git push)
+Development Branch → Dev Environment (Automated)
+    ↓ (PR + Review)
+Staging/UAT Branch → UAT Environment (Automated)
+    ↓ (PR + Approval)
+Main/Production Branch → Production Environment (Manual Approval)
+```
+
+---
+
+## 🌳 **Git Branching Strategy**
+
+### **Branch Structure:**
+
+```
+main (production)
+├── staging (UAT)
+├── develop (development)
+└── feature/* (feature branches)
+```
+
+### **Branching Rules:**
+
+1. **main** - Production-ready code only
+   - Protected branch
+   - Requires PR approval
+   - Auto-deploys to Production
+   - Never commit directly
+
+2. **staging** - UAT testing
+   - Merged from develop
+   - Auto-deploys to UAT
+   - QA testing happens here
+
+3. **develop** - Integration branch
+   - Merged from feature branches
+   - Auto-deploys to Dev
+   - Continuous integration
+
+4. **feature/** - New features
+   - Branch from develop
+   - Merge back to develop via PR
+
+---
+
+## 🎯 **Step 1: Set Up Git Repository**
+
+### **1.1 Initialize Repository:**
+
+```powershell
+# Initialize git (if not already done)
+git init
+
+# Add remote (replace with your repo URL)
+git remote add origin https://github.com/your-org/ecommerce-platform.git
+
+# Create gitignore (already exists)
+# Verify .gitignore includes:
+# - bin/
+# - obj/
+# - *.user
+# - appsettings.Development.json (sensitive data)
+```
+
+### **1.2 Create Branch Structure:**
+
+```powershell
+# Create and push main branch
+git checkout -b main
+git add .
+git commit -m "Initial commit - Complete Phase 3"
+git push -u origin main
+
+# Create develop branch
+git checkout -b develop
+git push -u origin develop
+
+# Create staging branch
+git checkout -b staging
+git push -u origin staging
+
+# Return to develop for development
+git checkout develop
+```
+
+### **1.3 Protect Branches (GitHub/Azure DevOps):**
+
+**GitHub:**
+- Go to Settings → Branches → Branch protection rules
+- Add rule for `main`:
+  - Require pull request reviews (2 approvers)
+  - Require status checks to pass
+  - Require branches to be up to date
+  - Include administrators
+  
+- Add rule for `staging`:
+  - Require pull request reviews (1 approver)
+  - Require status checks to pass
+
+---
+
+## 🏗️ **Step 2: Set Up Environments**
+
+### **2.1 Environment Configuration:**
+
+| Environment | Purpose | URL | Deployment |
+|-------------|---------|-----|------------|
+| **Dev** | Development testing | dev.api.ecommerce.com | Auto from `develop` |
+| **UAT** | User acceptance testing | uat.api.ecommerce.com | Auto from `staging` |
+| **Prod** | Production | api.ecommerce.com | Manual from `main` |
+
+### **2.2 Create Environment-Specific Config:**
+
+**Create these files:**
+
+```powershell
+# Development
+touch Ecommerce.Identity.API/appsettings.Development.json
+touch Ecommerce.Notification.API/appsettings.Development.json
+
+# UAT
+touch Ecommerce.Identity.API/appsettings.UAT.json
+touch Ecommerce.Notification.API/appsettings.UAT.json
+
+# Production
+touch Ecommerce.Identity.API/appsettings.Production.json
+touch Ecommerce.Notification.API/appsettings.Production.json
+```
+
+**Example - Identity API Production Config:**
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "#{DB_CONNECTION_PROD}#",
+    "Redis": "#{REDIS_CONNECTION_PROD}#"
+  },
+  "Jwt": {
+    "Secret": "#{JWT_SECRET_PROD}#",
+    "Issuer": "EcommerceIdentityAPI",
+    "Audience": "EcommerceClients",
+    "ExpirationInMinutes": 60,
+    "RefreshTokenExpirationInDays": 7
+  },
+  "RabbitMQ": {
+    "Host": "#{RABBITMQ_HOST_PROD}#",
+    "Port": 5672,
+    "Username": "#{RABBITMQ_USER_PROD}#",
+    "Password": "#{RABBITMQ_PASS_PROD}#",
+    "VirtualHost": "/",
+    "ExchangeName": "ecommerce.events",
+    "ExchangeType": "topic",
+    "Durable": true,
+    "AutoDelete": false
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Warning"
+    }
+  }
+}
+```
+
+**Note:** `#{VARIABLE}#` are placeholder tokens that CI/CD will replace.
+
+---
+
+## 🔧 **Step 3: CI/CD Pipeline Setup**
+
+### **Option A: Azure DevOps**
+
+#### **3.1 Create azure-pipelines.yml:**
+
+<function_calls>
+<invoke name="create_file">
+<parameter name="content"># Azure DevOps Pipeline for E-Commerce Platform
+
+trigger:
+  branches:
+    include:
+      - main
+      - staging
+      - develop
+  paths:
+    exclude:
+      - docs/*
+      - README.md
+
+variables:
+  buildConfiguration: 'Release'
+  dotNetVersion: '8.x'
+
+stages:
+  # ===== BUILD STAGE =====
+  - stage: Build
+    displayName: 'Build and Test'
+    jobs:
+      - job: BuildJob
+        displayName: 'Build Solution'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          # Install .NET SDK
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK'
+            inputs:
+              version: $(dotNetVersion)
+          
+          # Restore dependencies
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore NuGet Packages'
+            inputs:
+              command: 'restore'
+              projects: '**/*.csproj'
+          
+          # Build solution
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Solution'
+            inputs:
+              command: 'build'
+              projects: '**/*.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+          
+          # Run tests (when added)
+          - task: DotNetCoreCLI@2
+            displayName: 'Run Tests'
+            inputs:
+              command: 'test'
+              projects: '**/*Tests.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-build'
+            continueOnError: true
+          
+          # Publish Identity API
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish Identity API'
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: '**/Ecommerce.Identity.API.csproj'
+              arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/identity-api'
+              zipAfterPublish: true
+          
+          # Publish Notification API
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish Notification API'
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: '**/Ecommerce.Notification.API.csproj'
+              arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/notification-api'
+              zipAfterPublish: true
+          
+          # Publish artifacts
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Artifacts'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+
+  # ===== DEV DEPLOYMENT =====
+  - stage: DeployDev
+    displayName: 'Deploy to Dev'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    jobs:
+      - deployment: DeployDevJob
+        displayName: 'Deploy to Dev Environment'
+        environment: 'Development'
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # Download artifacts
+                - download: current
+                  artifact: drop
+                
+                # Deploy Identity API
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Identity API to Dev'
+                  inputs:
+                    azureSubscription: 'Azure-DevOps-Connection'
+                    appType: 'webAppLinux'
+                    appName: 'ecommerce-identity-api-dev'
+                    package: '$(Pipeline.Workspace)/drop/identity-api/*.zip'
+                
+                # Deploy Notification API
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Notification API to Dev'
+                  inputs:
+                    azureSubscription: 'Azure-DevOps-Connection'
+                    appType: 'webAppLinux'
+                    appName: 'ecommerce-notification-api-dev'
+                    package: '$(Pipeline.Workspace)/drop/notification-api/*.zip'
+
+  # ===== UAT DEPLOYMENT =====
+  - stage: DeployUAT
+    displayName: 'Deploy to UAT'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/staging'))
+    jobs:
+      - deployment: DeployUATJob
+        displayName: 'Deploy to UAT Environment'
+        environment: 'UAT'
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: drop
+                
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Identity API to UAT'
+                  inputs:
+                    azureSubscription: 'Azure-DevOps-Connection'
+                    appType: 'webAppLinux'
+                    appName: 'ecommerce-identity-api-uat'
+                    package: '$(Pipeline.Workspace)/drop/identity-api/*.zip'
+                
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Notification API to UAT'
+                  inputs:
+                    azureSubscription: 'Azure-DevOps-Connection'
+                    appType: 'webAppLinux'
+                    appName: 'ecommerce-notification-api-uat'
+                    package: '$(Pipeline.Workspace)/drop/notification-api/*.zip'
+
+  # ===== PRODUCTION DEPLOYMENT =====
+  - stage: DeployProduction
+    displayName: 'Deploy to Production'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployProdJob
+        displayName: 'Deploy to Production'
+        environment: 'Production'
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: drop
+                
+                # Manual approval happens at Environment level
+                
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Identity API to Production'
+                  inputs:
+                    azureSubscription: 'Azure-DevOps-Connection'
+                    appType: 'webAppLinux'
+                    appName: 'ecommerce-identity-api-prod'
+                    package: '$(Pipeline.Workspace)/drop/identity-api/*.zip'
+                    deploymentMethod: 'zipDeploy'
+                
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Notification API to Production'
+                  inputs:
+                    azureSubscription: 'Azure-DevOps-Connection'
+                    appType: 'webAppLinux'
+                    appName: 'ecommerce-notification-api-prod'
+                    package: '$(Pipeline.Workspace)/drop/notification-api/*.zip'
+                    deploymentMethod: 'zipDeploy'
+                
+                # Health check
+                - task: PowerShell@2
+                  displayName: 'Health Check'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      $identityHealth = Invoke-RestMethod -Uri "https://api.ecommerce.com/api/health"
+                      $notificationHealth = Invoke-RestMethod -Uri "https://api.ecommerce.com/notification/api/health"
+                      
+                      if ($identityHealth.status -ne "Healthy" -or $notificationHealth.status -ne "Healthy") {
+                        Write-Error "Health check failed!"
+                        exit 1
+                      }
+                      
+                      Write-Host "Health checks passed!"
