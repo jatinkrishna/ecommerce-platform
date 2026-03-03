@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const baseURL = process.env.REACT_APP_API_URL;
-
+console.log("REACT_APP_API_URL =", process.env.REACT_APP_API_URL);
 if (!baseURL) {
   throw new Error('REACT_APP_API_URL is not set. Configure it in Azure Static Web Apps -> Environment variables (Production) and redeploy.');
 }
