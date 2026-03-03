@@ -1,7 +1,13 @@
 import axios from 'axios';
 
+const baseURL = process.env.REACT_APP_API_URL;
+
+if (!baseURL) {
+  throw new Error('REACT_APP_API_URL is not set. Configure it in Azure Static Web Apps -> Environment variables (Production) and redeploy.');
+}
+
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL,
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -16,9 +22,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Handle token expiration
@@ -27,18 +31,16 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // If 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
-        // Try to refresh token
         const refreshToken = localStorage.getItem('refreshToken');
         const accessToken = localStorage.getItem('accessToken');
 
         if (refreshToken && accessToken) {
           const response = await axios.post(
-            `${process.env.REACT_APP_API_URL}/auth/refresh-token`,
+            `${baseURL}/auth/refresh-token`,
             { accessToken, refreshToken }
           );
 
@@ -47,12 +49,10 @@ api.interceptors.response.use(
           localStorage.setItem('accessToken', newAccessToken);
           localStorage.setItem('refreshToken', newRefreshToken);
 
-          // Retry original request with new token
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
           return api(originalRequest);
         }
       } catch (refreshError) {
-        // Refresh failed, logout user
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
