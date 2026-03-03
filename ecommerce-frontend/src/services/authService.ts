@@ -4,7 +4,7 @@ import { LoginRequest, RegisterRequest, AuthResponse, User } from '../types/auth
 export const authService = {
   // Register new user
   register: async (data: RegisterRequest): Promise<AuthResponse> => {
-    const response = await api.post<AuthResponse>('/auth/register', data);
+    const response = await api.post<AuthResponse>('api/Auth/register', data);
     
     // Store tokens
     localStorage.setItem('accessToken', response.data.accessToken);
@@ -16,7 +16,7 @@ export const authService = {
 
   // Login user
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response = await api.post<AuthResponse>('/auth/login', data);
+    const response = await api.post<AuthResponse>('api/Auth/login', data);
     
     // Store tokens
     localStorage.setItem('accessToken', response.data.accessToken);
